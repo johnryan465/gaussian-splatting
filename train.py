@@ -48,6 +48,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     ema_loss_for_log = 0.0
     progress_bar = tqdm(range(first_iter, opt.iterations), desc="Training progress")
     first_iter += 1
+    viewpoint_stack = scene.getTrainCameras()
     for iteration in range(first_iter, opt.iterations + 1):        
         if network_gui.conn == None:
             network_gui.try_connect()
@@ -73,9 +74,9 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             gaussians.oneupSHdegree()
 
         # Pick a random Camera
-        if not viewpoint_stack:
-            viewpoint_stack = scene.getTrainCameras().copy()
-        viewpoint_cam = viewpoint_stack.pop(randint(0, len(viewpoint_stack)-1))
+        # if not viewpoint_stack:
+        #    viewpoint_stack = scene.getTrainCameras().copy()
+        viewpoint_cam = viewpoint_stack[randint(0, len(viewpoint_stack)-1)]
 
         # Render
         if (iteration - 1) == debug_from:
