@@ -12,6 +12,8 @@
 import os
 import random
 import json
+from typing import Dict, List
+from scene.cameras import Camera
 from utils.system_utils import searchForMaxIteration
 from scene.dataset_readers import sceneLoadTypeCallbacks
 from scene.gaussian_model import GaussianModel
@@ -37,8 +39,8 @@ class Scene:
                 self.loaded_iter = load_iteration
             print("Loading trained model at iteration {}".format(self.loaded_iter))
 
-        self.train_cameras = {}
-        self.test_cameras = {}
+        self.train_cameras: Dict[float, List[Camera]] = {}
+        self.test_cameras: Dict[float, List[Camera]] = {}
 
         if os.path.exists(os.path.join(args.source_path, "sparse")):
             scene_info = sceneLoadTypeCallbacks["Colmap"](args.source_path, args.images, args.eval)

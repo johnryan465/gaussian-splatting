@@ -114,7 +114,7 @@ class GaussianModel:
     def get_opacity(self):
         return self.opacity_activation(self._opacity)
     
-    def get_covariance(self, scaling_modifier = 1):
+    def get_covariance(self, scaling_modifier = 1.0):
         return self.covariance_activation(self.get_scaling, scaling_modifier, self._rotation)
 
     def oneupSHdegree(self):

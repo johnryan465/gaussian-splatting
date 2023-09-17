@@ -9,10 +9,13 @@
 # For inquiries contact  george.drettakis@inria.fr
 #
 
+from typing import Union
 import torch
 from torch import nn
 import numpy as np
 from utils.graphics_utils import getWorld2View2, getProjectionMatrix
+
+
 
 class Camera(nn.Module):
     def __init__(self, colmap_id, R, T, FoVx, FoVy, image, gt_alpha_mask,
@@ -69,3 +72,4 @@ class MiniCam:
         view_inv = torch.inverse(self.world_view_transform)
         self.camera_center = view_inv[3][:3]
 
+CameraType = Union[Camera, MiniCam]
