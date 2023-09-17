@@ -101,15 +101,15 @@ class GaussianModel:
         self.optimizer.load_state_dict(opt_dict)
 
     @property
-    def get_scaling(self):
+    def get_scaling(self) -> torch.Tensor:
         return self.scaling_activation(self._scaling)
     
     @property
-    def get_rotation(self):
+    def get_rotation(self) -> torch.Tensor:
         return self.rotation_activation(self._rotation)
     
     @property
-    def get_xyz(self):
+    def get_xyz(self) -> torch.Tensor:
         return self._xyz
     
     @property
