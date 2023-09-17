@@ -15,6 +15,9 @@ dependencies:
   - torchaudio
   - torchvision
   - tqdm
+  - jaxtyping
+  - typeguard=3.0.2
+  - jax
   - pip:
     - submodules/diff-gaussian-rasterization
     - submodules/simple-knn
