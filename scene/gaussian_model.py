@@ -22,6 +22,14 @@ from utils.graphics_utils import BasicPointCloud
 from utils.general_utils import strip_symmetric, build_scaling_rotation
 
 class GaussianModel:
+    active_sh_degree : int
+    max_sh_degree : int
+    _xyz : torch.Tensor
+    _features_dc : torch.Tensor
+    _features_rest : torch.Tensor
+    _scaling : torch.Tensor
+    optimizer : torch.optim.Optimizer
+
 
     def setup_functions(self):
         def build_covariance_from_scaling_rotation(scaling, scaling_modifier, rotation):
@@ -53,7 +61,7 @@ class GaussianModel:
         self.max_radii2D = torch.empty(0)
         self.xyz_gradient_accum = torch.empty(0)
         self.denom = torch.empty(0)
-        self.optimizer = None
+        # self.optimizer = None
         self.percent_dense = 0
         self.spatial_lr_scale = 0
         self.setup_functions()
