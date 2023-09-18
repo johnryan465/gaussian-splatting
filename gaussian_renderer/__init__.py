@@ -12,16 +12,24 @@
 import torch
 import math
 from diff_gaussian_rasterization import GaussianRasterizationSettings, GaussianRasterizer
-from scene.cameras import CameraType
+from scene.cameras import Camera, CameraType
 from scene.gaussian_model import GaussianModel
 from utils.sh_utils import eval_sh
 
-def render(viewpoint_camera: CameraType, pc : GaussianModel, pipe, bg_color : torch.Tensor, scaling_modifier = 1.0, override_color = None):
+def render(viewpoint_camera: Camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, scaling_modifier = 1.0, override_color = None):
     """
     Render the scene. 
     
     Background tensor (bg_color) must be on GPU!
     """
+    # Remove camera parameters from optimizer
+    # pc.optimizer.param_groups = [x for x in pc.optimizer.param_groups if "camera_params" not in x.keys()]
+    # print(pc.optimizer.param_groups)
+
+    # Add camera parameters to optimizer
+    pc.set_camera(viewpoint_camera)
+    # pc.replace_tensor_to_optimizer(viewpoint_camera.world_view_transform, "camera_params")
+    # pc.optimizer.add_param_group({"params": [viewpoint_camera.world_view_transform]})
  
     # Create zero tensor. We will use it to make pytorch return gradients of the 2D (screen-space) means
     screenspace_points = torch.zeros_like(pc.get_xyz, dtype=pc.get_xyz.dtype, requires_grad=True, device="cuda") + 0
@@ -41,10 +49,10 @@ def render(viewpoint_camera: CameraType, pc : GaussianModel, pipe, bg_color : to
         tanfovy=tanfovy,
         bg=bg_color,
         scale_modifier=scaling_modifier,
-        viewmatrix=viewpoint_camera.world_view_transform,
-        projmatrix=viewpoint_camera.full_proj_transform,
+        viewmatrix=pc.world_view_transform,
+        projmatrix=pc.full_proj_transform,
         sh_degree=pc.active_sh_degree,
-        campos=viewpoint_camera.camera_center,
+        campos=pc.camera_center,
         prefiltered=False,
         debug=pipe.debug
     )
@@ -95,8 +103,8 @@ def render(viewpoint_camera: CameraType, pc : GaussianModel, pipe, bg_color : to
         scales = scales,
         rotations = rotations,
         cov3D_precomp = cov3D_precomp,
-        camerapos = viewpoint_camera.camera_center,
-        camerarot = viewpoint_camera.world_view_transform)
+        camerapos = pc.camera_center,
+        camerarot = pc.world_view_transform)
 
     # Those Gaussians that were frustum culled or had a radius of 0 were not visible.
     # They will be excluded from value updates used in the splitting criteria.
