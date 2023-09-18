@@ -82,7 +82,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         if (iteration - 1) == debug_from:
             pipe.debug = True
         render_pkg = render(viewpoint_cam, gaussians, pipe, background)
-        # tmp = viewpoint_cam.camera_center.cpu().detach().numpy()
+        tmp = viewpoint_cam.world_view_transform.cpu().detach().numpy()
         image, viewspace_point_tensor, visibility_filter, radii = render_pkg["render"], render_pkg["viewspace_points"], render_pkg["visibility_filter"], render_pkg["radii"]
 
         # Loss
@@ -91,7 +91,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim(image, gt_image))
         loss.backward()
         # print("Leaf", gaussians.world_view_transform.is_leaf)
-        # print("Val", gaussians.world_view_transform)
+        # print("Val", gaussians.world_view_transform.grad)
         # print("Grad", gaussians.camera_center.grad)
 
         iter_end.record()
@@ -130,8 +130,9 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 gaussians.optimizer.zero_grad(set_to_none = True)
             
             # Debug
-            #tmp2 = viewpoint_cam.camera_center.cpu().detach().numpy()
-            #print(tmp2 - tmp)
+            viewpoint_cam.world_view_transform = gaussians.world_view_transform.detach()
+            tmp2 = gaussians.world_view_transform.cpu().detach().numpy()
+            # print(tmp2 - tmp)
 
             if (iteration in checkpoint_iterations):
                 print("\n[ITER {}] Saving Checkpoint".format(iteration))

@@ -64,6 +64,10 @@ class Camera(nn.Module):
     def world_view_transform(self) -> torch.Tensor:
         return self._world_view_transform
     
+    @world_view_transform.setter
+    def world_view_transform(self, value):
+        self._world_view_transform = value
+    
     @property
     def projection_matrix(self) -> torch.Tensor:
         return self._projection_matrix
