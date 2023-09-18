@@ -86,9 +86,9 @@ class GaussianModel:
 
     def set_camera(self, camera: Camera):
         self._projection_matrix = camera.projection_matrix
-        optimizable_tensors = self.replace_tensor_to_optimizer(camera.world_view_transform, "camera_params")
+        # optimizable_tensors = self.replace_tensor_to_optimizer(camera.world_view_transform, "camera_params")
         # print(optimizable_tensors)
-        self._world_view_transform = optimizable_tensors["camera_params"]
+        self._world_view_transform = camera.world_view_transform #optimizable_tensors["camera_params"]
     
     
 
@@ -192,7 +192,7 @@ class GaussianModel:
             {'params': [self._opacity], 'lr': training_args.opacity_lr, "name": "opacity"},
             {'params': [self._scaling], 'lr': training_args.scaling_lr, "name": "scaling"},
             {'params': [self._rotation], 'lr': training_args.rotation_lr, "name": "rotation"},
-            {'params': [self._world_view_transform], 'lr': training_args.opacity_lr, "name": "camera_params"}
+            #{'params': [self._world_view_transform], 'lr': training_args.opacity_lr, "name": "camera_params"}
         ]
 
         self.optimizer = torch.optim.Adam(l, lr=0.0, eps=1e-15)
@@ -313,8 +313,10 @@ class GaussianModel:
     def _prune_optimizer(self, mask):
         optimizable_tensors = {}
         for group in self.optimizer.param_groups:
-            if group["name"] == "camera_params":
-                continue
+            #if group["name"] == "camera_params":
+            #    group["params"][0] = nn.Parameter(group["params"][0].requires_grad_(True))
+            #    optimizable_tensors[group["name"]] = group["params"][0]
+            #    continue
             stored_state = self.optimizer.state.get(group['params'][0], None)
             if stored_state is not None:
                 stored_state["exp_avg"] = stored_state["exp_avg"][mask]
@@ -333,6 +335,7 @@ class GaussianModel:
     def prune_points(self, mask):
         valid_points_mask = ~mask
         optimizable_tensors = self._prune_optimizer(valid_points_mask)
+        # print(optimizable_tensors.keys())
 
         self._xyz = optimizable_tensors["xyz"]
         self._features_dc = optimizable_tensors["f_dc"]
@@ -351,8 +354,8 @@ class GaussianModel:
         for group in self.optimizer.param_groups:
             assert len(group["params"]) == 1
             # print(group["name"])
-            if group["name"] == "camera_params":
-                continue
+            #if group["name"] == "camera_params":
+            #    continue
             extension_tensor = tensors_dict[group["name"]]
             stored_state = self.optimizer.state.get(group['params'][0], None)
             if stored_state is not None:

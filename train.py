@@ -92,7 +92,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         loss.backward()
         # print("Leaf", gaussians.world_view_transform.is_leaf)
         # print("Val", gaussians.world_view_transform)
-        # print("Grad", gaussians.world_view_transform.grad)
+        # print("Grad", gaussians.camera_center.grad)
 
         iter_end.record()
 
