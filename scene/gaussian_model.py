@@ -87,7 +87,7 @@ class GaussianModel:
     def set_camera(self, camera: Camera):
         self._projection_matrix = camera.projection_matrix
         optimizable_tensors = self.replace_tensor_to_optimizer(camera.world_view_transform, "camera_params")
-        print(optimizable_tensors)
+        # print(optimizable_tensors)
         self._world_view_transform = optimizable_tensors["camera_params"]
     
     
@@ -313,6 +313,8 @@ class GaussianModel:
     def _prune_optimizer(self, mask):
         optimizable_tensors = {}
         for group in self.optimizer.param_groups:
+            if group["name"] == "camera_params":
+                continue
             stored_state = self.optimizer.state.get(group['params'][0], None)
             if stored_state is not None:
                 stored_state["exp_avg"] = stored_state["exp_avg"][mask]
@@ -348,6 +350,9 @@ class GaussianModel:
         optimizable_tensors = {}
         for group in self.optimizer.param_groups:
             assert len(group["params"]) == 1
+            # print(group["name"])
+            if group["name"] == "camera_params":
+                continue
             extension_tensor = tensors_dict[group["name"]]
             stored_state = self.optimizer.state.get(group['params'][0], None)
             if stored_state is not None:
