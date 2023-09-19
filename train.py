@@ -25,6 +25,7 @@ from arguments import ModelParams, PipelineParams, OptimizationParams
 try:
     from torch.utils.tensorboard import SummaryWriter
     TENSORBOARD_FOUND = True
+    print("Tensorboard available: logging progress")
 except ImportError:
     TENSORBOARD_FOUND = False
 
@@ -49,6 +50,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     progress_bar = tqdm(range(first_iter, opt.iterations), desc="Training progress")
     first_iter += 1
     viewpoint_stack = scene.getTrainCameras()
+    viewpoint_stack_idxs = [ i for i in range(len(viewpoint_stack))]
     for iteration in range(first_iter, opt.iterations + 1):        
         if network_gui.conn == None:
             network_gui.try_connect()
@@ -74,9 +76,10 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             gaussians.oneupSHdegree()
 
         # Pick a random Camera
-        # if not viewpoint_stack:
-        #    viewpoint_stack = scene.getTrainCameras().copy()
-        viewpoint_cam = viewpoint_stack[randint(0, len(viewpoint_stack)-1)]
+        if len(viewpoint_stack_idxs) == 0:
+           viewpoint_stack_idxs = [ i for i in range(len(viewpoint_stack))]
+        viewpoint_cam_idx = viewpoint_stack_idxs.pop(randint(0, len(viewpoint_stack_idxs)-1))
+        viewpoint_cam = viewpoint_stack[viewpoint_cam_idx]
 
         # Render
         if (iteration - 1) == debug_from:
