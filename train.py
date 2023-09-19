@@ -13,7 +13,7 @@ import os
 import torch
 from random import randint
 from utils.loss_utils import l1_loss, ssim
-from gaussian_renderer import render, network_gui
+from gaussian_renderer import render, network_gui, render_eval
 import sys
 from scene import Scene, GaussianModel
 from utils.general_utils import safe_state
@@ -50,7 +50,18 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     progress_bar = tqdm(range(first_iter, opt.iterations), desc="Training progress")
     first_iter += 1
     viewpoint_stack = scene.getTrainCameras()
+    for cam in viewpoint_stack:
+        random_offset = torch.rand(3, device="cuda") * 0.04 - 0.02
+        random_offset_tensor = torch.zeros(4, 4, device="cuda")
+        random_offset_tensor[3, :3] = random_offset
+        # print(random_offset_tensor)
+        # print(cam.camera_center)
+        # cam.world_view_transform = torch.inverse(torch.inverse(cam.world_view_transform) + random_offset_tensor)
+        # print(cam.camera_center)
     viewpoint_stack_idxs = [ i for i in range(len(viewpoint_stack))]
+    #if iteration == 2500:
+    gaussians.enable_training_camera()
+            
     for iteration in range(first_iter, opt.iterations + 1):        
         if network_gui.conn == None:
             network_gui.try_connect()
@@ -85,7 +96,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         if (iteration - 1) == debug_from:
             pipe.debug = True
         render_pkg = render(viewpoint_cam, gaussians, pipe, background)
-        tmp = viewpoint_cam.world_view_transform.cpu().detach().numpy()
+        # tmp = viewpoint_cam.world_view_transform.cpu().detach().numpy()
         image, viewspace_point_tensor, visibility_filter, radii = render_pkg["render"], render_pkg["viewspace_points"], render_pkg["visibility_filter"], render_pkg["radii"]
 
         # Loss
@@ -109,11 +120,10 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 progress_bar.close()
 
             # Log and save
-            training_report(tb_writer, iteration, Ll1, loss, l1_loss, iter_start.elapsed_time(iter_end), testing_iterations, scene, render, (pipe, background), viewpoint_stack)
+            training_report(tb_writer, iteration, Ll1, loss, l1_loss, iter_start.elapsed_time(iter_end), testing_iterations, scene, render_eval, (pipe, background), viewpoint_stack)
             if (iteration in saving_iterations):
                 print("\n[ITER {}] Saving Gaussians".format(iteration))
                 scene.save(iteration)
-
             # Densification
             if iteration < opt.densify_until_iter:
                 # Keep track of max radii in image-space for pruning
@@ -127,13 +137,30 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 if iteration % opt.opacity_reset_interval == 0 or (dataset.white_background and iteration == opt.densify_from_iter):
                     gaussians.reset_opacity()
 
+            # print(gaussians.world_view_transform.grad)
             # Optimizer step
+            # viewpoint_cam.world_view_transform = gaussians.world_view_transform.clone()
+            #print(gaussians.world_view_transform)
+            # print(gaussians.camera_center)
+            # print(
+            #     (gaussians.world_view_transform - 0.001 * gaussians.world_view_transform.grad).inverse()[3,:3]
+            # )
+
             if iteration < opt.iterations:
                 gaussians.optimizer.step()
                 gaussians.optimizer.zero_grad(set_to_none = True)
+
+            #print(gaussians.world_view_transform)
+            # print(viewpoint_cam.world_view_transform)
+            # print(viewpoint_cam.world_view_transform - gaussians.world_view_transform.detach().clone())
+            # viewpoint_cam.world_view_transform = gaussians.world_view_transform.detach().clone()
             
-            if iteration == 2500:
-                gaussians.enable_training_camera()
+            viewpoint_cam.world_view_transform = gaussians.world_view_transform.detach().clone()
+
+            
+            # if iteration == 2500:
+            #    gaussians.enable_training_camera()
+
             
 
             if (iteration in checkpoint_iterations):
@@ -209,7 +236,7 @@ if __name__ == "__main__":
     parser.add_argument('--port', type=int, default=6009)
     parser.add_argument('--debug_from', type=int, default=-1)
     parser.add_argument('--detect_anomaly', action='store_true', default=False)
-    parser.add_argument("--test_iterations", nargs="+", type=int, default=[7_000, 30_000])
+    parser.add_argument("--test_iterations", nargs="+", type=int, default=[2_000, 3_000, 4_000, 5_000, 6_000, 7_000, 8_000, 9_000, 10_000, 11_000, 12_000, 13_000, 14_000, 15_000, 20_000, 30_000])
     parser.add_argument("--save_iterations", nargs="+", type=int, default=[7_000, 30_000])
     parser.add_argument("--quiet", action="store_true")
     parser.add_argument("--checkpoint_iterations", nargs="+", type=int, default=[])
