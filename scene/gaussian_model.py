@@ -63,6 +63,7 @@ class GaussianModel:
         self.xyz_gradient_accum = torch.empty(0)
         self._world_view_transform = torch.empty(0)
         self.denom = torch.empty(0)
+        self.camera_enabled = False
         # self.optimizer = None
         self.percent_dense = 0
         self.spatial_lr_scale = 0
@@ -83,14 +84,19 @@ class GaussianModel:
     @property
     def full_proj_transform(self) -> torch.Tensor:
         return (self.world_view_transform.unsqueeze(0).bmm(self.projection_matrix.unsqueeze(0))).squeeze(0)
+    
+    def enable_training_camera(self):
+        self.camera_enabled = True
+        self.optimizer.add_param_group({'params': [self._world_view_transform], 'lr': 0.0000001, "name": "camera_params"})
 
     def set_camera(self, camera: Camera):
         self._projection_matrix = camera.projection_matrix
         # optimizable_tensors = self.replace_tensor_to_optimizer(camera.world_view_transform, "camera_params")
         # print(optimizable_tensors)
-        self.optimizer.state[self.optimizer.param_groups[6]["params"][0]]["exp_avg"] = None
         self._world_view_transform = nn.Parameter(camera.world_view_transform.requires_grad_(True))
-        self.optimizer.param_groups[6]["params"][0] = self._world_view_transform
+        if self.camera_enabled:
+            self.optimizer.state[self.optimizer.param_groups[6]["params"][0]]["exp_avg"] = None
+            self.optimizer.param_groups[6]["params"][0] = self._world_view_transform
         # self._world_view_transform = camera.world_view_transform #optimizable_tensors["camera_params"]
     
     
@@ -195,7 +201,7 @@ class GaussianModel:
             {'params': [self._opacity], 'lr': training_args.opacity_lr, "name": "opacity"},
             {'params': [self._scaling], 'lr': training_args.scaling_lr, "name": "scaling"},
             {'params': [self._rotation], 'lr': training_args.rotation_lr, "name": "rotation"},
-            {'params': [self._world_view_transform], 'lr': 0.00000001, "name": "camera_params"}
+            #{'params': [self._world_view_transform], 'lr': 0.00000001, "name": "camera_params"}
         ]
 
         self.optimizer = torch.optim.Adam(l, lr=0.0, eps=1e-15)
