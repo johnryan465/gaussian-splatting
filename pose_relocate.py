@@ -36,6 +36,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     scene = Scene(dataset, gaussians)
     gaussians.training_setup(opt)
     if checkpoint:
+        print("Loading checkpoint from", checkpoint)
         (model_params, first_iter) = torch.load(checkpoint)
         gaussians.restore(model_params, opt)
 
@@ -52,6 +53,8 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     viewpoint_stack = scene.getTrainCameras()
     original_pos = None
     offset = None
+    viewpoint_stack_idxs_ = [] # = [ i for i in range(len(viewpoint_stack))]
+
     for i, cam in enumerate(viewpoint_stack):
         random_offset = torch.rand(3, device="cuda") * 0.1 - 0.05
         random_offset_tensor = torch.zeros(4, 4, device="cuda")
@@ -59,16 +62,19 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         # print(random_offset_tensor)
         # print(random_offset_tensor)
         # print(cam.camera_center)
-        if cam.image_name == "000052":
+        if cam.image_name == "000064":
+            viewpoint_stack_idxs_.append(i)
             original_pos = cam.camera_center.clone()
-            # cam.world_view_transform = torch.inverse(torch.inverse(cam.world_view_transform) + random_offset_tensor)
+            cam.world_view_transform = torch.inverse(torch.inverse(cam.world_view_transform) + random_offset_tensor)
             print("Original pos", original_pos)
             print("Moved pos", cam.camera_center)
             offset = random_offset
         # print(cam.camera_center)
-    viewpoint_stack_idxs = [ i for i in range(len(viewpoint_stack))]
     #if iteration == 2500:
-    # gaussians.enable_training_camera()
+
+    viewpoint_stack_idxs = viewpoint_stack_idxs_.copy()
+    gaussians.enable_training_camera()
+    gaussians.disable_params()
             
     for iteration in range(first_iter, opt.iterations + 1):        
         if network_gui.conn == None:
@@ -96,7 +102,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
         # Pick a random Camera
         if len(viewpoint_stack_idxs) == 0:
-           viewpoint_stack_idxs = [ i for i in range(len(viewpoint_stack))]
+           viewpoint_stack_idxs = viewpoint_stack_idxs_.copy()
         viewpoint_cam_idx = viewpoint_stack_idxs.pop(randint(0, len(viewpoint_stack_idxs)-1))
         viewpoint_cam = viewpoint_stack[viewpoint_cam_idx]
 
@@ -133,17 +139,17 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 print("\n[ITER {}] Saving Gaussians".format(iteration))
                 scene.save(iteration)
             # Densification
-            if iteration < opt.densify_until_iter:
-                # Keep track of max radii in image-space for pruning
-                gaussians.max_radii2D[visibility_filter] = torch.max(gaussians.max_radii2D[visibility_filter], radii[visibility_filter])
-                gaussians.add_densification_stats(viewspace_point_tensor, visibility_filter)
+            #if iteration < opt.densify_until_iter:
+            #    # Keep track of max radii in image-space for pruning
+            #    gaussians.max_radii2D[visibility_filter] = torch.max(gaussians.max_radii2D[visibility_filter], radii[visibility_filter])
+            #    gaussians.add_densification_stats(viewspace_point_tensor, visibility_filter)
 
-                if iteration > opt.densify_from_iter and iteration % opt.densification_interval == 0:
-                    size_threshold = 20 if iteration > opt.opacity_reset_interval else None
-                    gaussians.densify_and_prune(opt.densify_grad_threshold, 0.005, scene.cameras_extent, size_threshold)
+            #    if iteration > opt.densify_from_iter and iteration % opt.densification_interval == 0:
+            #        size_threshold = 20 if iteration > opt.opacity_reset_interval else None
+            #        gaussians.densify_and_prune(opt.densify_grad_threshold, 0.005, scene.cameras_extent, size_threshold)
                 
-                if iteration % opt.opacity_reset_interval == 0 or (dataset.white_background and iteration == opt.densify_from_iter):
-                    gaussians.reset_opacity()
+            #    if iteration % opt.opacity_reset_interval == 0 or (dataset.white_background and iteration == opt.densify_from_iter):
+            #        gaussians.reset_opacity()
 
             # print(gaussians.world_view_transform.grad)
             # Optimizer step
@@ -165,21 +171,26 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             
             viewpoint_cam.world_view_transform = gaussians.world_view_transform.detach().clone()
 
-            if viewpoint_cam.image_name == "000052":
-                print("Original pos", original_pos)
-                print("Offset", offset)
-                print("New pos", viewpoint_cam.camera_center)
+            if viewpoint_cam.image_name == "000064":
+                #print("Original pos", original_pos)
+                # print("Offset", offset)
+                #print("New pos", viewpoint_cam.camera_center)
+                tb_writer.add_scalar('diff', torch.norm(viewpoint_cam.camera_center - original_pos).cpu().numpy(), iteration)
                 print("Diff", torch.norm(viewpoint_cam.camera_center - original_pos))
+                print("Diff Tensor", viewpoint_cam.camera_center - original_pos)
 
 
             
             # if iteration == 2500:
             #    gaussians.enable_training_camera()
+            if iteration % 700 == 0:
+                torch.cuda.empty_cache()
 
             
 
             if (iteration in checkpoint_iterations):
                 print("\n[ITER {}] Saving Checkpoint".format(iteration))
+                print("Saving checkpoint to", scene.model_path + "/chkpnt" + str(iteration) + ".pth")
                 torch.save((gaussians.capture(), iteration), scene.model_path + "/chkpnt" + str(iteration) + ".pth")
 
 def prepare_output_and_logger(args):    
@@ -251,7 +262,7 @@ if __name__ == "__main__":
     parser.add_argument('--port', type=int, default=6009)
     parser.add_argument('--debug_from', type=int, default=-1)
     parser.add_argument('--detect_anomaly', action='store_true', default=False)
-    parser.add_argument("--test_iterations", nargs="+", type=int, default=[2_000, 3_000, 4_000, 5_000, 6_000, 7_000, 8_000, 9_000, 10_000, 11_000, 12_000, 13_000, 14_000, 15_000, 20_000, 30_000])
+    parser.add_argument("--test_iterations", nargs="+", type=int, default=[0, 100, 200, 500, 700, 1_000, 2_000, 3_000, 4_000, 5_000, 6_000, 7_000, 7_100, 7_200, 7_300, 7_400, 7_500, 7_700, 8_000, 9_000, 10_000, 11_000, 12_000, 13_000, 14_000, 15_000, 20_000, 30_000])
     parser.add_argument("--save_iterations", nargs="+", type=int, default=[7_000, 30_000])
     parser.add_argument("--quiet", action="store_true")
     parser.add_argument("--checkpoint_iterations", nargs="+", type=int, default=[7_000])

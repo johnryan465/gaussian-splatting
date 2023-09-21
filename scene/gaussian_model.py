@@ -64,6 +64,7 @@ class GaussianModel:
         self._world_view_transform_inv = torch.empty(0)
         self.denom = torch.empty(0)
         self.camera_enabled = False
+        self.params_enabled = True
         # self.optimizer = None
         self.percent_dense = 0
         self.spatial_lr_scale = 0
@@ -87,7 +88,21 @@ class GaussianModel:
     
     def enable_training_camera(self):
         self.camera_enabled = True
-        self.optimizer.add_param_group({'params': [self._world_view_transform_inv], 'lr': 0.0001, "name": "camera_params"})
+        self.optimizer.add_param_group({'params': [self._world_view_transform_inv], 'lr': 0.00001, "name": "camera_params"})
+
+    def disable_training_camera(self):
+        self.camera_enabled = False
+        self.optimizer.param_groups.pop(-1)
+
+    def disable_params(self):
+        self.params_enabled = False
+        self.optimizer.param_groups.pop(0)
+        self.optimizer.param_groups.pop(0)
+        self.optimizer.param_groups.pop(0)
+        self.optimizer.param_groups.pop(0)
+        self.optimizer.param_groups.pop(0)
+        self.optimizer.param_groups.pop(0)
+        
 
     def set_camera(self, camera: Camera):
         self._projection_matrix = camera.projection_matrix
@@ -96,8 +111,8 @@ class GaussianModel:
         with torch.no_grad():
             self._world_view_transform_inv = nn.Parameter(camera.world_view_transform.inverse().clone().requires_grad_(True))
             if self.camera_enabled:
-                self.optimizer.state[self.optimizer.param_groups[6]["params"][0]]["exp_avg"] = None
-                self.optimizer.param_groups[6]["params"][0] = self._world_view_transform_inv
+                self.optimizer.state[self.optimizer.param_groups[-1]["params"][0]]["exp_avg"] = None
+                self.optimizer.param_groups[-1]["params"][0] = self._world_view_transform_inv
         # self._world_view_transform = camera.world_view_transform #optimizable_tensors["camera_params"]
     
     
