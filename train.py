@@ -59,7 +59,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         # print(random_offset_tensor)
         # print(random_offset_tensor)
         # print(cam.camera_center)
-        if cam.image_name == "000052":
+        if False: #cam.image_name == "000052":
             original_pos = cam.camera_center.clone()
             # cam.world_view_transform = torch.inverse(torch.inverse(cam.world_view_transform) + random_offset_tensor)
             print("Original pos", original_pos)
@@ -165,7 +165,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             
             viewpoint_cam.world_view_transform = gaussians.world_view_transform.detach().clone()
 
-            if viewpoint_cam.image_name == "000052":
+            if False: # viewpoint_cam.image_name == "000052":
                 print("Original pos", original_pos)
                 print("Offset", offset)
                 print("New pos", viewpoint_cam.camera_center)

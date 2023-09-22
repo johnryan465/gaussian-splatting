@@ -52,7 +52,6 @@ def render(viewpoint_camera: Camera, pc : GaussianModel, pipe, bg_color : torch.
         viewmatrix=pc.world_view_transform,
         projmatrix=pc.full_proj_transform,
         sh_degree=pc.active_sh_degree,
-        campos=pc.camera_center,
         prefiltered=False,
         debug=pipe.debug
     )
@@ -150,7 +149,6 @@ def render_eval(viewpoint_camera: Camera, pc : GaussianModel, pipe, bg_color : t
         viewmatrix=viewpoint_camera.world_view_transform,
         projmatrix=viewpoint_camera.full_proj_transform,
         sh_degree=pc.active_sh_degree,
-        campos=viewpoint_camera.camera_center,
         prefiltered=False,
         debug=pipe.debug
     )

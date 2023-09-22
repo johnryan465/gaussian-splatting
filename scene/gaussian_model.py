@@ -88,7 +88,7 @@ class GaussianModel:
     
     def enable_training_camera(self):
         self.camera_enabled = True
-        self.optimizer.add_param_group({'params': [self._world_view_transform_inv], 'lr': 0.00001, "name": "camera_params"})
+        self.optimizer.add_param_group({'params': [self._world_view_transform_inv], 'lr': 0.01, "name": "camera_params"})
 
     def disable_training_camera(self):
         self.camera_enabled = False
@@ -230,6 +230,10 @@ class GaussianModel:
         ''' Learning rate scheduling per step '''
         for param_group in self.optimizer.param_groups:
             if param_group["name"] == "xyz":
+                lr = self.xyz_scheduler_args(iteration)
+                param_group['lr'] = lr
+                return lr
+            if param_group["name"] == "camera_params":
                 lr = self.xyz_scheduler_args(iteration)
                 param_group['lr'] = lr
                 return lr

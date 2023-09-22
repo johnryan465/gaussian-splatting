@@ -29,6 +29,29 @@ try:
 except ImportError:
     TENSORBOARD_FOUND = False
 
+import copy
+
+def finite_difference_gradient(f, x, eps=1e-6):
+    return ((f(x + eps/2) - f(x - eps/2)) / eps)
+
+
+def finite_diff_calc(gt_image, viewpoint_cam, gaussians, pipe, background, opt):
+    def f(x):
+        random_offset_tensor = torch.zeros(4, 4, device="cuda")
+        random_offset_tensor[3, 0] = x
+        cam = copy.deepcopy(viewpoint_cam)
+        cam.world_view_transform = torch.inverse(torch.inverse(cam.world_view_transform) + random_offset_tensor)
+        render_pkg = render(cam, gaussians, pipe, background)
+        # tmp = viewpoint_cam.world_view_transform.cpu().detach().numpy()
+        image = render_pkg["render"]
+
+        # Loss
+        # gt_image = viewpoint_cam.original_image.cuda()
+        Ll1 = l1_loss(image, gt_image)
+        loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim(image, gt_image))
+        return loss.item()
+    return finite_difference_gradient(f, 0.0)
+
 def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from):
     first_iter = 0
     tb_writer = prepare_output_and_logger(dataset)
@@ -56,7 +79,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     viewpoint_stack_idxs_ = [] # = [ i for i in range(len(viewpoint_stack))]
 
     for i, cam in enumerate(viewpoint_stack):
-        random_offset = torch.rand(3, device="cuda") * 0.1 - 0.05
+        random_offset = torch.rand(3, device="cuda") * 0.2 - 0.1
         random_offset_tensor = torch.zeros(4, 4, device="cuda")
         random_offset_tensor[3, :3] = random_offset
         # print(random_offset_tensor)
@@ -65,6 +88,8 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         if cam.image_name == "000064":
             viewpoint_stack_idxs_.append(i)
             original_pos = cam.camera_center.clone()
+            print("Camera Transformation", cam.world_view_transform)
+            print("Camera Transformation Inverse", torch.inverse(cam.world_view_transform))
             cam.world_view_transform = torch.inverse(torch.inverse(cam.world_view_transform) + random_offset_tensor)
             print("Original pos", original_pos)
             print("Moved pos", cam.camera_center)
@@ -160,6 +185,9 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             #     (gaussians.world_view_transform - 0.001 * gaussians.world_view_transform.grad).inverse()[3,:3]
             # )
 
+            #if viewpoint_cam.image_name == "000064":
+            #    print("Grad", gaussians._world_view_transform_inv.grad[3, :3])
+
             if iteration < opt.iterations:
                 gaussians.optimizer.step()
                 gaussians.optimizer.zero_grad(set_to_none = True)
@@ -176,8 +204,8 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 # print("Offset", offset)
                 #print("New pos", viewpoint_cam.camera_center)
                 tb_writer.add_scalar('diff', torch.norm(viewpoint_cam.camera_center - original_pos).cpu().numpy(), iteration)
-                print("Diff", torch.norm(viewpoint_cam.camera_center - original_pos))
-                print("Diff Tensor", viewpoint_cam.camera_center - original_pos)
+                #print("Diff", torch.norm(viewpoint_cam.camera_center - original_pos))
+                #print("Diff Tensor", viewpoint_cam.camera_center - original_pos)
 
 
             
@@ -185,6 +213,9 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             #    gaussians.enable_training_camera()
             if iteration % 700 == 0:
                 torch.cuda.empty_cache()
+            
+            # print("Finite differences", finite_diff_calc(gt_image, viewpoint_cam, gaussians, pipe, background, opt))
+
 
             
 
