@@ -12,6 +12,7 @@
 import os
 import torch
 from random import randint
+from scene.util import se3_exp_map
 from utils.loss_utils import l1_loss, ssim
 from gaussian_renderer import render, network_gui, render_eval
 import sys
@@ -22,6 +23,8 @@ from tqdm import tqdm
 from utils.image_utils import psnr
 from argparse import ArgumentParser, Namespace
 from arguments import ModelParams, PipelineParams, OptimizationParams
+from torch.profiler import profile, record_function, ProfilerActivity
+
 try:
     from torch.utils.tensorboard import SummaryWriter
     TENSORBOARD_FOUND = True
@@ -31,16 +34,18 @@ except ImportError:
 
 import copy
 
-def finite_difference_gradient(f, x, eps=1e-6):
+def finite_difference_gradient(f, x, eps=5e-6):
     return ((f(x + eps/2) - f(x - eps/2)) / eps)
 
 
-def finite_diff_calc(gt_image, viewpoint_cam, gaussians, pipe, background, opt):
+def finite_diff_calc(i, gt_image, viewpoint_cam, gaussians, pipe, background, opt):
     def f(x):
-        random_offset_tensor = torch.zeros(4, 4, device="cuda")
-        random_offset_tensor[3, 0] = x
+        random_offset_tensor = torch.zeros(6, device="cuda")
+        random_offset_tensor[i] = x
+        mul = se3_exp_map(random_offset_tensor.view(1, 6)).view(4, 4)
+        # print("Mul", mul)
         cam = copy.deepcopy(viewpoint_cam)
-        cam.world_view_transform = torch.inverse(torch.inverse(cam.world_view_transform) + random_offset_tensor)
+        cam.world_view_transform = cam.world_view_transform.detach().clone() @ mul
         render_pkg = render(cam, gaussians, pipe, background)
         # tmp = viewpoint_cam.world_view_transform.cpu().detach().numpy()
         image = render_pkg["render"]
@@ -79,13 +84,19 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     viewpoint_stack_idxs_ = [] # = [ i for i in range(len(viewpoint_stack))]
 
     for i, cam in enumerate(viewpoint_stack):
-        random_offset = torch.rand(3, device="cuda") * 0.2 - 0.1
+        random_offset = torch.rand(3, device="cuda") * 0.6 - 0.3
         random_offset_tensor = torch.zeros(4, 4, device="cuda")
         random_offset_tensor[3, :3] = random_offset
+        random_rotation_offset = torch.rand(3, device="cuda") * 0.6 - 0.3
+        # random 3x3 rotation matrix using rodriques formula
+
+
+
+
         # print(random_offset_tensor)
         # print(random_offset_tensor)
         # print(cam.camera_center)
-        if cam.image_name == "000064":
+        if cam.image_name == "000089":
             viewpoint_stack_idxs_.append(i)
             original_pos = cam.camera_center.clone()
             print("Camera Transformation", cam.world_view_transform)
@@ -101,128 +112,146 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     gaussians.enable_training_camera()
     gaussians.disable_params()
             
-    for iteration in range(first_iter, opt.iterations + 1):        
-        if network_gui.conn == None:
-            network_gui.try_connect()
-        while network_gui.conn != None:
-            try:
-                net_image_bytes = None
-                custom_cam, do_training, pipe.convert_SHs_python, pipe.compute_cov3D_python, keep_alive, scaling_modifer = network_gui.receive()
-                if custom_cam != None:
-                    net_image = render(custom_cam, gaussians, pipe, background, scaling_modifer)["render"]
-                    net_image_bytes = memoryview((torch.clamp(net_image, min=0, max=1.0) * 255).byte().permute(1, 2, 0).contiguous().cpu().numpy())
-                network_gui.send(net_image_bytes, dataset.source_path)
-                if do_training and ((iteration < int(opt.iterations)) or not keep_alive):
-                    break
-            except Exception as e:
-                network_gui.conn = None
+    for iteration in range(first_iter, opt.iterations + 1):
+        # with profile(activities=[ProfilerActivity.CUDA], profile_memory=True) as prof:     
+        if True:   
+            if network_gui.conn == None:
+                network_gui.try_connect()
+            while network_gui.conn != None:
+                try:
+                    net_image_bytes = None
+                    custom_cam, do_training, pipe.convert_SHs_python, pipe.compute_cov3D_python, keep_alive, scaling_modifer = network_gui.receive()
+                    if custom_cam != None:
+                        net_image = render(custom_cam, gaussians, pipe, background, scaling_modifer)["render"]
+                        net_image_bytes = memoryview((torch.clamp(net_image, min=0, max=1.0) * 255).byte().permute(1, 2, 0).contiguous().cpu().numpy())
+                    network_gui.send(net_image_bytes, dataset.source_path)
+                    if do_training and ((iteration < int(opt.iterations)) or not keep_alive):
+                        break
+                except Exception as e:
+                    network_gui.conn = None
 
-        iter_start.record()
+            iter_start.record()
 
-        gaussians.update_learning_rate(iteration)
+            gaussians.update_learning_rate(iteration)
 
-        # Every 1000 its we increase the levels of SH up to a maximum degree
-        if iteration % 1000 == 0:
-            gaussians.oneupSHdegree()
+            # Every 1000 its we increase the levels of SH up to a maximum degree
+            if iteration % 1000 == 0:
+                gaussians.oneupSHdegree()
 
-        # Pick a random Camera
-        if len(viewpoint_stack_idxs) == 0:
-           viewpoint_stack_idxs = viewpoint_stack_idxs_.copy()
-        viewpoint_cam_idx = viewpoint_stack_idxs.pop(randint(0, len(viewpoint_stack_idxs)-1))
-        viewpoint_cam = viewpoint_stack[viewpoint_cam_idx]
+            # Pick a random Camera
+            if len(viewpoint_stack_idxs) == 0:
+                viewpoint_stack_idxs = viewpoint_stack_idxs_.copy()
+            viewpoint_cam_idx = viewpoint_stack_idxs.pop(randint(0, len(viewpoint_stack_idxs)-1))
+            viewpoint_cam = viewpoint_stack[viewpoint_cam_idx]
 
-        # Render
-        if (iteration - 1) == debug_from:
-            pipe.debug = True
-        render_pkg = render(viewpoint_cam, gaussians, pipe, background)
-        # tmp = viewpoint_cam.world_view_transform.cpu().detach().numpy()
-        image, viewspace_point_tensor, visibility_filter, radii = render_pkg["render"], render_pkg["viewspace_points"], render_pkg["visibility_filter"], render_pkg["radii"]
+            # Render
+            if (iteration - 1) == debug_from:
+                pipe.debug = True
+            render_pkg = render(viewpoint_cam, gaussians, pipe, background)
+            # tmp = viewpoint_cam.world_view_transform.cpu().detach().numpy()
+            image, viewspace_point_tensor, visibility_filter, radii = render_pkg["render"], render_pkg["viewspace_points"], render_pkg["visibility_filter"], render_pkg["radii"]
 
-        # Loss
-        gt_image = viewpoint_cam.original_image.cuda()
-        Ll1 = l1_loss(image, gt_image)
-        loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim(image, gt_image))
-        loss.backward()
-        # print("Leaf", gaussians.world_view_transform.is_leaf)
-        # print("Val", gaussians.world_view_transform.grad)
-        # print("Grad", gaussians.camera_center.grad)
+            # Loss
+            gt_image = viewpoint_cam.original_image.cuda()
+            Ll1 = l1_loss(image, gt_image)
+            loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim(image, gt_image))
+            loss.backward()
+            # print("Leaf", gaussians.world_view_transform.is_leaf)
+            # print("Val", gaussians.world_view_transform.grad)
+            # print("Grad", gaussians.camera_center.grad)
 
-        iter_end.record()
+            iter_end.record()
 
-        with torch.no_grad():
-            # Progress bar
-            ema_loss_for_log = 0.4 * loss.item() + 0.6 * ema_loss_for_log
-            if iteration % 10 == 0:
-                progress_bar.set_postfix({"Loss": f"{ema_loss_for_log:.{7}f}"})
-                progress_bar.update(10)
-            if iteration == opt.iterations:
-                progress_bar.close()
+            with torch.no_grad():
+                # Progress bar
+                ema_loss_for_log = 0.4 * loss.item() + 0.6 * ema_loss_for_log
+                if iteration % 10 == 0:
+                    progress_bar.set_postfix({"Loss": f"{ema_loss_for_log:.{7}f}"})
+                    progress_bar.update(10)
+                if iteration == opt.iterations:
+                    progress_bar.close()
 
-            # Log and save
-            training_report(tb_writer, iteration, Ll1, loss, l1_loss, iter_start.elapsed_time(iter_end), testing_iterations, scene, render_eval, (pipe, background), viewpoint_stack)
-            if (iteration in saving_iterations):
-                print("\n[ITER {}] Saving Gaussians".format(iteration))
-                scene.save(iteration)
-            # Densification
-            #if iteration < opt.densify_until_iter:
-            #    # Keep track of max radii in image-space for pruning
-            #    gaussians.max_radii2D[visibility_filter] = torch.max(gaussians.max_radii2D[visibility_filter], radii[visibility_filter])
-            #    gaussians.add_densification_stats(viewspace_point_tensor, visibility_filter)
+                # Log and save
+                training_report(tb_writer, iteration, Ll1, loss, l1_loss, iter_start.elapsed_time(iter_end), testing_iterations, scene, render_eval, (pipe, background), viewpoint_stack)
+                if (iteration in saving_iterations):
+                    print("\n[ITER {}] Saving Gaussians".format(iteration))
+                    scene.save(iteration)
+                # Densification
+                #if iteration < opt.densify_until_iter:
+                #    # Keep track of max radii in image-space for pruning
+                #    gaussians.max_radii2D[visibility_filter] = torch.max(gaussians.max_radii2D[visibility_filter], radii[visibility_filter])
+                #    gaussians.add_densification_stats(viewspace_point_tensor, visibility_filter)
 
-            #    if iteration > opt.densify_from_iter and iteration % opt.densification_interval == 0:
-            #        size_threshold = 20 if iteration > opt.opacity_reset_interval else None
-            #        gaussians.densify_and_prune(opt.densify_grad_threshold, 0.005, scene.cameras_extent, size_threshold)
+                #    if iteration > opt.densify_from_iter and iteration % opt.densification_interval == 0:
+                #        size_threshold = 20 if iteration > opt.opacity_reset_interval else None
+                #        gaussians.densify_and_prune(opt.densify_grad_threshold, 0.005, scene.cameras_extent, size_threshold)
+                    
+                #    if iteration % opt.opacity_reset_interval == 0 or (dataset.white_background and iteration == opt.densify_from_iter):
+                #        gaussians.reset_opacity()
+
+                # print(gaussians.world_view_transform.grad)
+                # print(gaussians.exp_factor)
+                # print(gaussians.camera_center)
+                #print("Grad", gaussians._omega.grad)
+                #print("Omega", gaussians._omega)
+                #print(gaussians.world_view_transform)
+                # Optimizer step
+                # viewpoint_cam.world_view_transform = gaussians.world_view_transform.clone()
+                #print(gaussians.world_view_transform)
+                # print(gaussians.camera_center)
+                # print(
+                #     (gaussians.world_view_transform - 0.001 * gaussians.world_view_transform.grad).inverse()[3,:3]
+                # )
+
+                #if viewpoint_cam.image_name == "000064":
+                #    print("Grad", gaussians._world_view_transform_inv.grad[3, :3])
+                #print("Grad", gaussians._omega.grad)
+                #print("Leaf", gaussians._omega.is_leaf)
+                #print("Analytical", gaussians._omega.grad)
+
+                if iteration < opt.iterations:
+                    gaussians.optimizer.step()
+                    gaussians.optimizer.zero_grad(set_to_none = True)
+
+                #print(gaussians.world_view_transform)
+                # print(viewpoint_cam.world_view_transform)
+                # print(viewpoint_cam.world_view_transform - gaussians.world_view_transform.detach().clone())
+                # viewpoint_cam.world_view_transform = gaussians.world_view_transform.detach().clone()
+                #print("Finite differences", finite_diff_calc(0, gt_image, viewpoint_cam, gaussians, pipe, background, opt))
+                #print("Finite differences", finite_diff_calc(1, gt_image, viewpoint_cam, gaussians, pipe, background, opt))
+                #print("Finite differences", finite_diff_calc(2, gt_image, viewpoint_cam, gaussians, pipe, background, opt))
+                #print("Finite differences", finite_diff_calc(3, gt_image, viewpoint_cam, gaussians, pipe, background, opt))
+                #print("Finite differences", finite_diff_calc(4, gt_image, viewpoint_cam, gaussians, pipe, background, opt))
+                #print("Finite differences", finite_diff_calc(5, gt_image, viewpoint_cam, gaussians, pipe, background, opt))
+
+                # viewpoint_cam._omega = gaussians._omega.detach().clone()
+                viewpoint_cam.world_view_transform = gaussians.world_view_transform.detach().clone()
+
+                if viewpoint_cam.image_name == "000089":
+                    #print("Original pos", original_pos)
+                    # print("Offset", offset)
+                    #print("New pos", viewpoint_cam.camera_center)
+                    tb_writer.add_scalar('diff', torch.norm(viewpoint_cam.camera_center - original_pos).cpu().numpy(), iteration)
+                    #print("Diff", torch.norm(viewpoint_cam.camera_center - original_pos))
+                    #print("Diff Tensor", viewpoint_cam.camera_center - original_pos)
                 
-            #    if iteration % opt.opacity_reset_interval == 0 or (dataset.white_background and iteration == opt.densify_from_iter):
-            #        gaussians.reset_opacity()
-
-            # print(gaussians.world_view_transform.grad)
-            # Optimizer step
-            # viewpoint_cam.world_view_transform = gaussians.world_view_transform.clone()
-            #print(gaussians.world_view_transform)
-            # print(gaussians.camera_center)
-            # print(
-            #     (gaussians.world_view_transform - 0.001 * gaussians.world_view_transform.grad).inverse()[3,:3]
-            # )
-
-            #if viewpoint_cam.image_name == "000064":
-            #    print("Grad", gaussians._world_view_transform_inv.grad[3, :3])
-
-            if iteration < opt.iterations:
-                gaussians.optimizer.step()
-                gaussians.optimizer.zero_grad(set_to_none = True)
-
-            #print(gaussians.world_view_transform)
-            # print(viewpoint_cam.world_view_transform)
-            # print(viewpoint_cam.world_view_transform - gaussians.world_view_transform.detach().clone())
-            # viewpoint_cam.world_view_transform = gaussians.world_view_transform.detach().clone()
-            
-            viewpoint_cam.world_view_transform = gaussians.world_view_transform.detach().clone()
-
-            if viewpoint_cam.image_name == "000064":
-                #print("Original pos", original_pos)
-                # print("Offset", offset)
-                #print("New pos", viewpoint_cam.camera_center)
-                tb_writer.add_scalar('diff', torch.norm(viewpoint_cam.camera_center - original_pos).cpu().numpy(), iteration)
-                #print("Diff", torch.norm(viewpoint_cam.camera_center - original_pos))
-                #print("Diff Tensor", viewpoint_cam.camera_center - original_pos)
-
-
-            
-            # if iteration == 2500:
-            #    gaussians.enable_training_camera()
-            if iteration % 700 == 0:
+                # if iteration == 2500:
+                #    gaussians.enable_training_camera()
+                # if iteration % 700 == 0:
                 torch.cuda.empty_cache()
-            
-            # print("Finite differences", finite_diff_calc(gt_image, viewpoint_cam, gaussians, pipe, background, opt))
+                
+                # print("Current:", torch.cuda.memory_allocated()) #  / torch.cuda.max_memory_allocated())
+                # print("Peak:", torch.cuda.max_memory_allocated())
 
 
-            
 
-            if (iteration in checkpoint_iterations):
-                print("\n[ITER {}] Saving Checkpoint".format(iteration))
-                print("Saving checkpoint to", scene.model_path + "/chkpnt" + str(iteration) + ".pth")
-                torch.save((gaussians.capture(), iteration), scene.model_path + "/chkpnt" + str(iteration) + ".pth")
+                
+
+                if (iteration in checkpoint_iterations):
+                    print("\n[ITER {}] Saving Checkpoint".format(iteration))
+                    print("Saving checkpoint to", scene.model_path + "/chkpnt" + str(iteration) + ".pth")
+                    torch.save((gaussians.capture(), iteration), scene.model_path + "/chkpnt" + str(iteration) + ".pth")
+        # print(prof.key_averages(group_by_stack_n=5).table(sort_by="self_cuda_time_total"))
 
 def prepare_output_and_logger(args):    
     if not args.model_path:
@@ -255,8 +284,7 @@ def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_i
     # Report test and samples of training set
     if iteration in testing_iterations:
         torch.cuda.empty_cache()
-        validation_configs = ({'name': 'test', 'cameras' : scene.getTestCameras()}, 
-                              {'name': 'train', 'cameras' : [train_cameras[idx % len(train_cameras)] for idx in range(5, 30, 5)]})
+        validation_configs = [{'name': 'train', 'cameras' : [train_cameras[idx % len(train_cameras)] for idx in range(5, 30, 5)]}]
 
         for config in validation_configs:
             if config['cameras'] and len(config['cameras']) > 0:

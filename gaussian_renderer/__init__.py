@@ -199,8 +199,8 @@ def render_eval(viewpoint_camera: Camera, pc : GaussianModel, pipe, bg_color : t
         scales = scales,
         rotations = rotations,
         cov3D_precomp = cov3D_precomp,
-        camerapos = pc.camera_center,
-        camerarot = pc.world_view_transform)
+        camerapos = viewpoint_camera.camera_center,
+        camerarot = viewpoint_camera.world_view_transform)
 
     # Those Gaussians that were frustum culled or had a radius of 0 were not visible.
     # They will be excluded from value updates used in the splitting criteria.

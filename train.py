@@ -52,20 +52,6 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     viewpoint_stack = scene.getTrainCameras()
     original_pos = None
     offset = None
-    for i, cam in enumerate(viewpoint_stack):
-        random_offset = torch.rand(3, device="cuda") * 0.1 - 0.05
-        random_offset_tensor = torch.zeros(4, 4, device="cuda")
-        random_offset_tensor[3, :3] = random_offset
-        # print(random_offset_tensor)
-        # print(random_offset_tensor)
-        # print(cam.camera_center)
-        if False: #cam.image_name == "000052":
-            original_pos = cam.camera_center.clone()
-            # cam.world_view_transform = torch.inverse(torch.inverse(cam.world_view_transform) + random_offset_tensor)
-            print("Original pos", original_pos)
-            print("Moved pos", cam.camera_center)
-            offset = random_offset
-        # print(cam.camera_center)
     viewpoint_stack_idxs = [ i for i in range(len(viewpoint_stack))]
     #if iteration == 2500:
     # gaussians.enable_training_camera()
@@ -172,9 +158,9 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 print("Diff", torch.norm(viewpoint_cam.camera_center - original_pos))
 
 
-            
-            # if iteration == 2500:
-            #    gaussians.enable_training_camera()
+            torch.cuda.empty_cache()
+            if iteration == 1000:
+                gaussians.enable_training_camera()
 
             
 

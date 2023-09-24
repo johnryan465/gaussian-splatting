@@ -58,6 +58,7 @@ class Camera(nn.Module):
         self._projection_matrix = getProjectionMatrix(znear=self.znear, zfar=self.zfar, fovX=self.FoVx, fovY=self.FoVy).transpose(0,1).cuda()
         # self._full_proj_transform = (self.world_view_transform.unsqueeze(0).bmm(self.projection_matrix.unsqueeze(0))).squeeze(0)
         # self._camera_center = self.world_view_transform.inverse()[3, :3]
+        # self._omega =  torch.zeros(6, device=self.data_device)
 
 
     @property
@@ -71,6 +72,10 @@ class Camera(nn.Module):
     @property
     def camera_center(self) -> torch.Tensor:
         return self.world_view_transform.inverse()[3, :3]
+    
+    #@property
+    #def omega(self) -> torch.Tensor:
+    #    return self._omega
     
 
 

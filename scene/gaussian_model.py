@@ -21,6 +21,8 @@ from utils.sh_utils import RGB2SH
 from simple_knn._C import distCUDA2
 from utils.graphics_utils import BasicPointCloud
 from utils.general_utils import strip_symmetric, build_scaling_rotation
+from jaxtyping import Float
+from .util import se3_exp_map, se3_exp_map_no_rot
 
 class GaussianModel:
     active_sh_degree : int
@@ -61,7 +63,8 @@ class GaussianModel:
         self._opacity = torch.empty(0)
         self.max_radii2D = torch.empty(0)
         self.xyz_gradient_accum = torch.empty(0)
-        self._world_view_transform_inv = torch.empty(0)
+        self._original_world_view_transform = torch.empty(0)
+        self._omega = torch.empty(0)
         self.denom = torch.empty(0)
         self.camera_enabled = False
         self.params_enabled = True
@@ -71,12 +74,16 @@ class GaussianModel:
         self.setup_functions()
 
     @property
+    def exp_factor(self) -> Float[torch.Tensor, "4 4"]:
+        return se3_exp_map(self._omega.view(1, 6)).view(4, 4)
+
+    @property
     def camera_center(self) -> torch.Tensor:
-        return self._world_view_transform_inv[3, :3]
+        return self.world_view_transform.inverse()[3, :3]
     
     @property
     def world_view_transform(self) -> torch.Tensor:
-        return self._world_view_transform_inv.inverse()
+        return self._original_world_view_transform @ self.exp_factor
     
     @property
     def projection_matrix(self) -> torch.Tensor:
@@ -88,7 +95,7 @@ class GaussianModel:
     
     def enable_training_camera(self):
         self.camera_enabled = True
-        self.optimizer.add_param_group({'params': [self._world_view_transform_inv], 'lr': 0.01, "name": "camera_params"})
+        self.optimizer.add_param_group({'params': [self._omega], 'lr': 0.001, "name": "camera_params"})
 
     def disable_training_camera(self):
         self.camera_enabled = False
@@ -109,10 +116,11 @@ class GaussianModel:
         # optimizable_tensors = self.replace_tensor_to_optimizer(camera.world_view_transform, "camera_params")
         # print(optimizable_tensors)
         with torch.no_grad():
-            self._world_view_transform_inv = nn.Parameter(camera.world_view_transform.inverse().clone().requires_grad_(True))
+            self._original_world_view_transform = camera.world_view_transform.clone().requires_grad_(True)
+            self._omega = nn.Parameter(torch.normal(0, 1e-6, size=(6,), device=self._projection_matrix.device).requires_grad_(True))
             if self.camera_enabled:
-                self.optimizer.state[self.optimizer.param_groups[-1]["params"][0]]["exp_avg"] = None
-                self.optimizer.param_groups[-1]["params"][0] = self._world_view_transform_inv
+                # self.optimizer.state[self.optimizer.param_groups[-1]["params"][0]]["exp_avg"] = None
+                self.optimizer.param_groups[-1]["params"][0] = self._omega
         # self._world_view_transform = camera.world_view_transform #optimizable_tensors["camera_params"]
     
     
@@ -316,7 +324,7 @@ class GaussianModel:
         self._opacity = nn.Parameter(torch.tensor(opacities, dtype=torch.float, device="cuda").requires_grad_(True))
         self._scaling = nn.Parameter(torch.tensor(scales, dtype=torch.float, device="cuda").requires_grad_(True))
         self._rotation = nn.Parameter(torch.tensor(rots, dtype=torch.float, device="cuda").requires_grad_(True))
-        self._world_view_transform_inv = nn.Parameter(torch.eye(4, device="cuda").requires_grad_(True))
+        self._omega = nn.Parameter(torch.zeros(6, device="cuda").requires_grad_(True))
 
         self.active_sh_degree = self.max_sh_degree
 
