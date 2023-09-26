@@ -94,7 +94,7 @@ def render(viewpoint_camera: Camera, pc : GaussianModel, pipe, bg_color : torch.
     #print(viewpoint_camera.full_proj_transform)
 
     # Rasterize visible Gaussians to image, obtain their radii (on screen). 
-    rendered_image, radii = rasterizer(
+    rendered_image, radii, depth = rasterizer(
         means3D = means3D,
         means2D = means2D,
         shs = shs,
@@ -110,6 +110,7 @@ def render(viewpoint_camera: Camera, pc : GaussianModel, pipe, bg_color : torch.
     # They will be excluded from value updates used in the splitting criteria.
     return {"render": rendered_image,
             "viewspace_points": screenspace_points,
+            "depth": depth,
             "visibility_filter" : radii > 0,
             "radii": radii}
 
@@ -192,7 +193,7 @@ def render_eval(viewpoint_camera: Camera, pc : GaussianModel, pipe, bg_color : t
     #print(viewpoint_camera.full_proj_transform)
 
     # Rasterize visible Gaussians to image, obtain their radii (on screen). 
-    rendered_image, radii = rasterizer(
+    rendered_image, radii, depth = rasterizer(
         means3D = means3D,
         means2D = means2D,
         shs = shs,
@@ -208,5 +209,6 @@ def render_eval(viewpoint_camera: Camera, pc : GaussianModel, pipe, bg_color : t
     # They will be excluded from value updates used in the splitting criteria.
     return {"render": rendered_image,
             "viewspace_points": screenspace_points,
+            "depth": depth,
             "visibility_filter" : radii > 0,
             "radii": radii}

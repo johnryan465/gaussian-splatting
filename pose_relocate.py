@@ -84,7 +84,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     viewpoint_stack_idxs_ = [] # = [ i for i in range(len(viewpoint_stack))]
 
     for i, cam in enumerate(viewpoint_stack):
-        random_offset = (torch.rand(3, device="cuda") * 6) - 3
+        random_offset = (torch.rand(3, device="cuda") * 1) - 0.5
         random_offset_tensor = torch.zeros(4, 4, device="cuda")
         random_offset_tensor[3, :3] = random_offset
 
@@ -135,6 +135,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 viewpoint_stack_idxs = viewpoint_stack_idxs_.copy()
             viewpoint_cam_idx = viewpoint_stack_idxs.pop(randint(0, len(viewpoint_stack_idxs)-1))
             viewpoint_cam = viewpoint_stack[viewpoint_cam_idx]
+            viewpoint_cam.set_iteration(iteration)
 
             # Render
             if (iteration - 1) == debug_from:
@@ -284,10 +285,21 @@ def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_i
                 l1_test = 0.0
                 psnr_test = 0.0
                 for idx, viewpoint in enumerate(config['cameras']):
-                    image = torch.clamp(renderFunc(viewpoint, scene.gaussians, *renderArgs)["render"], 0.0, 1.0)
+                    render_out = renderFunc(viewpoint, scene.gaussians, *renderArgs)
+                    image = torch.clamp(render_out["render"], 0.0, 1.0)
+                    print("Image", image.shape)
+                    depth = - render_out["depth"]
+                    print(torch.max(depth))
+                    # scale depth to 0-1
+                    depth = (depth - torch.min(depth)) / (torch.max(depth) - torch.min(depth))
+                    # convert to 3 channel image for tensorboard
+                    depth = depth.repeat(3, 1, 1)
+                    
+
                     gt_image = torch.clamp(viewpoint.original_image.to("cuda"), 0.0, 1.0)
                     if tb_writer and (idx < 5):
                         tb_writer.add_images(config['name'] + "_view_{}/render".format(viewpoint.image_name), image[None], global_step=iteration)
+                        tb_writer.add_images(config['name'] + "_view_{}/depth".format(viewpoint.image_name), depth[None], global_step=iteration)
                         if iteration == testing_iterations[0]:
                             tb_writer.add_images(config['name'] + "_view_{}/ground_truth".format(viewpoint.image_name), gt_image[None], global_step=iteration)
                     l1_test += l1_loss(image, gt_image).mean().double()
