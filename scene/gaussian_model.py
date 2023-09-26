@@ -12,7 +12,7 @@
 import torch
 import numpy as np
 from scene.cameras import Camera
-from utils.general_utils import inverse_sigmoid, get_expon_lr_func, build_rotation
+from utils.general_utils import get_camera_lr_func, inverse_sigmoid, get_expon_lr_func, build_rotation
 from torch import nn
 import os
 from utils.system_utils import mkdir_p
@@ -83,7 +83,7 @@ class GaussianModel:
     
     @property
     def world_view_transform(self) -> torch.Tensor:
-        return self._original_world_view_transform @ self.exp_factor
+        return self.exp_factor @ self._original_world_view_transform
     
     @property
     def projection_matrix(self) -> torch.Tensor:
@@ -93,9 +93,14 @@ class GaussianModel:
     def full_proj_transform(self) -> torch.Tensor:
         return (self.world_view_transform.unsqueeze(0).bmm(self.projection_matrix.unsqueeze(0))).squeeze(0)
     
-    def enable_training_camera(self):
+    def enable_training_camera(self, camera):
         self.camera_enabled = True
-        self.optimizer.add_param_group({'params': [self._omega], 'lr': 0.001, "name": "camera_params"})
+        self._omega = nn.Parameter(torch.zeros(6, device=self._xyz.device).requires_grad_(True))
+
+        self.optimizer.add_param_group({'params': [self._omega], 'lr': 0.1, "name": "camera_params"})
+        self._original_world_view_transform = camera.world_view_transform.clone().requires_grad_(True)
+        self._projection_matrix = camera.projection_matrix.clone()
+
 
     def disable_training_camera(self):
         self.camera_enabled = False
@@ -112,17 +117,18 @@ class GaussianModel:
         
 
     def set_camera(self, camera: Camera):
-        self._projection_matrix = camera.projection_matrix
+        pass
+        #self._projection_matrix = camera.projection_matrix
         # optimizable_tensors = self.replace_tensor_to_optimizer(camera.world_view_transform, "camera_params")
         # print(optimizable_tensors)
-        with torch.no_grad():
-            self._original_world_view_transform = camera.world_view_transform.clone().requires_grad_(True)
-            self._omega = nn.Parameter(torch.normal(0, 1e-6, size=(6,), device=self._projection_matrix.device).requires_grad_(True))
-            if self.camera_enabled:
-                # self.optimizer.state[self.optimizer.param_groups[-1]["params"][0]]["exp_avg"] = None
-                self.optimizer.param_groups[-1]["params"][0] = self._omega
-        # self._world_view_transform = camera.world_view_transform #optimizable_tensors["camera_params"]
-    
+        #with torch.no_grad():
+            #self._original_world_view_transform = camera.world_view_transform.clone().requires_grad_(True)
+            #self._omega = nn.Parameter(torch.zeros(6, device=self._projection_matrix.device).requires_grad_(True))
+            #if self.camera_enabled:
+            #    self.optimizer.state[self.optimizer.param_groups[-1]["params"][0]]["exp_avg"] = None
+            #    self.optimizer.param_groups[-1]["params"][0] = self._omega
+            # self._world_view_transform = camera.world_view_transform #optimizable_tensors["camera_params"]
+        
     
 
     def capture(self):
@@ -233,6 +239,7 @@ class GaussianModel:
                                                     lr_final=training_args.position_lr_final*self.spatial_lr_scale,
                                                     lr_delay_mult=training_args.position_lr_delay_mult,
                                                     max_steps=training_args.position_lr_max_steps)
+        self.camera_scheduler_args = get_camera_lr_func(lr_init=0.01)
 
     def update_learning_rate(self, iteration: int):
         ''' Learning rate scheduling per step '''
@@ -242,7 +249,7 @@ class GaussianModel:
                 param_group['lr'] = lr
                 return lr
             if param_group["name"] == "camera_params":
-                lr = self.xyz_scheduler_args(iteration)
+                lr = self.camera_scheduler_args(iteration)
                 param_group['lr'] = lr
                 return lr
 

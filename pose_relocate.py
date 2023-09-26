@@ -84,18 +84,10 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     viewpoint_stack_idxs_ = [] # = [ i for i in range(len(viewpoint_stack))]
 
     for i, cam in enumerate(viewpoint_stack):
-        random_offset = torch.rand(3, device="cuda") * 0.6 - 0.3
+        random_offset = (torch.rand(3, device="cuda") * 6) - 3
         random_offset_tensor = torch.zeros(4, 4, device="cuda")
         random_offset_tensor[3, :3] = random_offset
-        random_rotation_offset = torch.rand(3, device="cuda") * 0.6 - 0.3
-        # random 3x3 rotation matrix using rodriques formula
 
-
-
-
-        # print(random_offset_tensor)
-        # print(random_offset_tensor)
-        # print(cam.camera_center)
         if cam.image_name == "000089":
             viewpoint_stack_idxs_.append(i)
             original_pos = cam.camera_center.clone()
@@ -109,7 +101,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     #if iteration == 2500:
 
     viewpoint_stack_idxs = viewpoint_stack_idxs_.copy()
-    gaussians.enable_training_camera()
+    gaussians.enable_training_camera(viewpoint_stack[viewpoint_stack_idxs[0]])
     gaussians.disable_params()
             
     for iteration in range(first_iter, opt.iterations + 1):
@@ -132,7 +124,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
             iter_start.record()
 
-            gaussians.update_learning_rate(iteration)
+            gaussians.update_learning_rate(iteration - first_iter)
 
             # Every 1000 its we increase the levels of SH up to a maximum degree
             if iteration % 1000 == 0:
@@ -192,11 +184,11 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 # print(gaussians.world_view_transform.grad)
                 # print(gaussians.exp_factor)
                 # print(gaussians.camera_center)
-                #print("Grad", gaussians._omega.grad)
+                # print("Grad", gaussians._omega.grad)
                 #print("Omega", gaussians._omega)
                 #print(gaussians.world_view_transform)
                 # Optimizer step
-                # viewpoint_cam.world_view_transform = gaussians.world_view_transform.clone()
+                viewpoint_cam.world_view_transform = gaussians.world_view_transform.clone()
                 #print(gaussians.world_view_transform)
                 # print(gaussians.camera_center)
                 # print(
@@ -225,7 +217,8 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 #print("Finite differences", finite_diff_calc(5, gt_image, viewpoint_cam, gaussians, pipe, background, opt))
 
                 # viewpoint_cam._omega = gaussians._omega.detach().clone()
-                viewpoint_cam.world_view_transform = gaussians.world_view_transform.detach().clone()
+                # print(gaussians.exp_factor)
+                # viewpoint_cam.world_view_transform = gaussians.world_view_transform.detach().clone()
 
                 if viewpoint_cam.image_name == "000089":
                     #print("Original pos", original_pos)
