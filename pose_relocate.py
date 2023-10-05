@@ -25,6 +25,8 @@ from argparse import ArgumentParser, Namespace
 from arguments import ModelParams, PipelineParams, OptimizationParams
 from torch.profiler import profile, record_function, ProfilerActivity
 
+from utils.se3 import random_rotation
+
 try:
     from torch.utils.tensorboard import SummaryWriter
     TENSORBOARD_FOUND = True
@@ -86,14 +88,14 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     for i, cam in enumerate(viewpoint_stack):
         random_offset = (torch.rand(3, device="cuda") * 1) - 0.5
         random_offset_tensor = torch.zeros(4, 4, device="cuda")
-        random_offset_tensor[3, :3] = random_offset
+        # random_offset_tensor[3, :3] = random_offset
 
         if cam.image_name == "000089":
             viewpoint_stack_idxs_.append(i)
             original_pos = cam.camera_center.clone()
             print("Camera Transformation", cam.world_view_transform)
             print("Camera Transformation Inverse", torch.inverse(cam.world_view_transform))
-            cam.world_view_transform = torch.inverse(torch.inverse(cam.world_view_transform) + random_offset_tensor)
+            cam.world_view_transform =  torch.inverse(torch.inverse(torch.tensor(random_rotation(20)).float().cuda() @ (cam.world_view_transform) + random_offset_tensor))
             print("Original pos", original_pos)
             print("Moved pos", cam.camera_center)
             offset = random_offset
@@ -288,10 +290,10 @@ def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_i
                     render_out = renderFunc(viewpoint, scene.gaussians, *renderArgs)
                     image = torch.clamp(render_out["render"], 0.0, 1.0)
                     print("Image", image.shape)
-                    depth = - render_out["depth"]
-                    print(torch.max(depth))
+                    depth = render_out["depth"]
+                    # print(torch.max(depth))
                     # scale depth to 0-1
-                    depth = (depth - torch.min(depth)) / (torch.max(depth) - torch.min(depth))
+                    depth = (depth) / (torch.max(depth))
                     # convert to 3 channel image for tensorboard
                     depth = depth.repeat(3, 1, 1)
                     
@@ -326,7 +328,7 @@ if __name__ == "__main__":
     parser.add_argument('--port', type=int, default=6009)
     parser.add_argument('--debug_from', type=int, default=-1)
     parser.add_argument('--detect_anomaly', action='store_true', default=False)
-    parser.add_argument("--test_iterations", nargs="+", type=int, default=[0, 100, 200, 500, 700, 1_000, 2_000, 3_000, 4_000, 5_000, 6_000, 7_000, 7_100, 7_200, 7_300, 7_400, 7_500, 7_700, 8_000, 9_000, 10_000, 11_000, 12_000, 13_000, 14_000, 15_000, 20_000, 30_000])
+    parser.add_argument("--test_iterations", nargs="+", type=int, default=[0, 100, 200, 500, 700, 1_000, 2_000, 3_000, 4_000, 5_000, 6_000, 7_000, 7_001, 7_050, 7_100, 7_200, 7_300, 7_400, 7_500, 7_700, 8_000, 9_000, 10_000, 11_000, 12_000, 13_000, 14_000, 15_000, 20_000, 30_000])
     parser.add_argument("--save_iterations", nargs="+", type=int, default=[7_000, 30_000])
     parser.add_argument("--quiet", action="store_true")
     parser.add_argument("--checkpoint_iterations", nargs="+", type=int, default=[7_000])

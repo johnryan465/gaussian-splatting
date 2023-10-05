@@ -62,10 +62,11 @@ def get_expon_lr_func(
     return helper
 
 def get_camera_lr_func(
-    lr_init
+    lr_init,
+    coeff: float = 0.8
 ):
     def helper(step):
-        return lr_init * np.power(0.8, step/100) 
+        return lr_init * np.power(coeff, step/100) 
     return helper
 
 def strip_lowerdiag(L):

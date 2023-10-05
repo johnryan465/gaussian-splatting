@@ -239,7 +239,7 @@ class GaussianModel:
                                                     lr_final=training_args.position_lr_final*self.spatial_lr_scale,
                                                     lr_delay_mult=training_args.position_lr_delay_mult,
                                                     max_steps=training_args.position_lr_max_steps)
-        self.camera_scheduler_args = get_camera_lr_func(lr_init=0.01)
+        self.camera_scheduler_args = get_camera_lr_func(lr_init=0.01, coeff=0.99)
 
     def update_learning_rate(self, iteration: int):
         ''' Learning rate scheduling per step '''
