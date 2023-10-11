@@ -86,7 +86,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     viewpoint_stack_idxs_ = [] # = [ i for i in range(len(viewpoint_stack))]
 
     for i, cam in enumerate(viewpoint_stack):
-        random_offset = (torch.rand(3, device="cuda") * 1) - 0.5
+        random_offset = torch.ones(3, device="cuda") * 1 # (torch.rand(3, device="cuda") * 1) - 0.5
         random_offset_tensor = torch.zeros(4, 4, device="cuda")
         # random_offset_tensor[3, :3] = random_offset
 

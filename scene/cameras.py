@@ -59,7 +59,7 @@ class Camera(nn.Module):
         # self._full_proj_transform = (self.world_view_transform.unsqueeze(0).bmm(self.projection_matrix.unsqueeze(0))).squeeze(0)
         # self._camera_center = self.world_view_transform.inverse()[3, :3]
         # self._omega =  torch.zeros(6, device=self.data_device)
-        self._cov_offset = 0.0001
+        self._cov_offset = 0 # 0.0001
 
 
     @property

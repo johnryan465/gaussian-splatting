@@ -50,7 +50,7 @@ def rotation_matrix(axis: np.ndarray, angle: float):
 
 def random_rotation(max_angle: float):
   axis = np.array([0,1,0]) # sample_unit_sphere()
-  angle = max_angle / 180 * np.pi # np.random.uniform(0, (max_angle / 180) * np.pi)
+  angle = (max_angle / 180) * np.pi # np.random.uniform(-(max_angle / 180) * np.pi, (max_angle / 180) * np.pi)
   # create homogeneous rotation matrix
   R = np.eye(4)
   R[:3, :3] = rotation_matrix(axis, angle)
