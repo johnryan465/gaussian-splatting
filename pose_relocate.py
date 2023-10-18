@@ -90,7 +90,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         random_offset_tensor = torch.zeros(4, 4, device="cuda")
         # random_offset_tensor[3, :3] = random_offset
 
-        if cam.image_name == "000089":
+        if cam.image_name == "000085":
             viewpoint_stack_idxs_.append(i)
             original_pos = cam.camera_center.clone()
             print("Camera Transformation", cam.world_view_transform)
@@ -223,7 +223,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 # print(gaussians.exp_factor)
                 # viewpoint_cam.world_view_transform = gaussians.world_view_transform.detach().clone()
 
-                if viewpoint_cam.image_name == "000089":
+                if viewpoint_cam.image_name == "000085":
                     #print("Original pos", original_pos)
                     # print("Offset", offset)
                     #print("New pos", viewpoint_cam.camera_center)
@@ -280,7 +280,13 @@ def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_i
     # Report test and samples of training set
     if iteration in testing_iterations:
         torch.cuda.empty_cache()
-        validation_configs = [{'name': 'train', 'cameras' : [train_cameras[idx % len(train_cameras)] for idx in range(5, 30, 5)]}]
+        idx = 0
+        for _idx, viewpoint in enumerate(train_cameras):
+            if viewpoint.image_name == "000085":
+                idx = _idx
+                break
+
+        validation_configs = [{'name': 'train', 'cameras' : [train_cameras[idx % len(train_cameras)] for idx in range(0, 30, 5)] + [train_cameras[idx]]}]
 
         for config in validation_configs:
             if config['cameras'] and len(config['cameras']) > 0:
@@ -296,8 +302,6 @@ def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_i
                     depth = (depth) / (torch.max(depth))
                     # convert to 3 channel image for tensorboard
                     depth = depth.repeat(3, 1, 1)
-                    
-
                     gt_image = torch.clamp(viewpoint.original_image.to("cuda"), 0.0, 1.0)
                     if tb_writer and (idx < 5):
                         tb_writer.add_images(config['name'] + "_view_{}/render".format(viewpoint.image_name), image[None], global_step=iteration)
